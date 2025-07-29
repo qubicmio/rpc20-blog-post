@@ -1,0 +1,10 @@
+
+[events-publisher] { origin: events-service; offset: 0,2; } --> [events-service] 
+
+[events-publisher] --> [kafka] { origin: events-publisher; offset: 2,0; }
+
+[events-consumer] { origin: kafka; offset: 2,0; } --> [kafka] 
+
+[events-consumer] --> [elasticsearch] { origin: events-consumer; offset: 0,2; } 
+
+

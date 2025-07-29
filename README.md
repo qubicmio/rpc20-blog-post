@@ -1,8 +1,14 @@
-# The way to RPC 2.0
+# The way to RPC 2.0 - Integration Layer Revamp
 
-Since epoch 104 the Qubic integration layer provides easy access to the Qubic network. It allows sending transactions, querying smart contracts and provides information like transaction and tick data.
+Since epoch 104 the Qubic integration layer has provided easy access to the Qubic network. It enables transactions to be sent, smart contracts to be queried, and information such as transaction and tick data to be provided.
 
-The integration layer is used by 3rd party applications, like explorers, wallets and exchanges. The advantage of this layer is that archived data is easily accessible and users do not have to understand the network internas in detail and do not have to implement node communication.
+This layer is used by third-party applications such as explorers, wallets and exchanges. The advantage of this layer is that archived data is easily accessible, meaning users do not need to understand the network internals in detail or implement node communication.
+
+However, the existing integration layer is reaching its limits, and it is necessary to consider the future of Qubic in order to manage the anticipated growth. This is why we began refactoring the integration layer at the start of this year.
+
+The new archiving solution in the integration layer (aka RPC 2.0 in popular wording)  is designed to support the future growth of Qubic and this article aims to provide insight into the technical details of the new solution, as well as serving as documentation for those interested in operating an archive.
+
+While it may be of limited interest to regular end users, it could offer interesting insight into daily work that happens behind the scenes.
 
 ## Integration APIs
 
@@ -128,15 +134,17 @@ For the data archive we decided to go with a file store where every epoch is sto
 +----------+                   +------------+
 ```
 
+The archive with the per epoch data is work in progress that is not finished yet. Until now only the complete data for all recorded epochs is available in one single database.
+
 #### Backup and disaster recovery
 
 To be able to restore the data in case of disaster there are several layers in place. First of all there are regular backups of the systems so that we can restore them in case something goes wrong. But it's also possible to restore from scratch. We have intermediary short term storage for restoring without the need of processing the source data (for fast recovery of the last few epochs) and the archived data that can be reimported and reprocessed.
 
 ### Ingestion pipelines
 
-Ingestion pipelines are used to transport the data from the source that collects it (archiver) to the destination (elasticsearch). The data publishing part needs to be decoupled from the source to avoid problems at the source when the backend is not available. Theoretically it would be possible to send the data directly from the publisher to elasticsearch but we decided to use a message broker in between to have redundancy, temporary persistence, and the possibility to use data integration features or to scale up the processing with multiple partitions.
+Ingestion pipelines are used to transport the data from the source (archiver) to the destination (elasticsearch). The data publishing part needs to be decoupled from the source to avoid problems at the source when the backend is not available. Theoretically it would be possible to send the data directly from the publisher to elasticsearch but we decided to decouple it even more by using a messaging system in between to have redundancy, temporary persistence, and the possibility to use data integration features or to scale up the processing with multiple partitions.
 
-As a message broker we decided to use [Apache Kafka](https://kafka.apache.org/), an open-source distributed event streaming platform. One kafka cluster consists out of at least three nodes to provide proper redundancy.
+We decided to use [Apache Kafka](https://kafka.apache.org/), an open-source distributed event streaming platform. One kafka cluster consists out of at least three nodes to provide proper redundancy.
 
 A typical pipeline shipping data from the archiver to elasticsearch looks like this:
 
@@ -146,40 +154,48 @@ A typical pipeline shipping data from the archiver to elasticsearch looks like t
 +--------+     +-----------+     +-------+     +----------+     +-------------+
 ```
 
-The publisher (aka producer) collectes the data from the source and sends messages to a kafka topic. A kafka topic is a queue of messages. A consumer reads the messages from kafka and sends the data to the destination.
+The publisher (aka producer) collects the data from the source and sends messages to a kafka topic. A kafka topic is a queue of messages. A consumer reads the messages from kafka and sends the data to the destination.
 
-Kafka allows multiple consumer groups to read from one topic and guarantees that each groups consumes each message (ordered within one partition). That allows to consume one message in multiple ways.
+Kafka allows multiple consumer groups to read from one topic and guarantees that each group consumes each message (ordered within one partition). That allows to consume one message in multiple ways.
 
 We store around 5 epochs of data temporarily within kafka. In case of problems we are able to replay parts of the data quickly. For redundancy we use a replication factor of `3`, that means that 2 nodes per cluster can go offline without affecting the data processing.
 
-At the moment we have 3 ingestion pipelines running in production and one additional (events) in development.
+At the moment we have 3 ingestion pipelines running in production:
 
 ```
-+----------+           +------------------------+           +-------+           +-----------------------+
-| archiver | <+------- | transactions-publisher | ------+-> | kafka | <+------- | transactions-consumer | ------+
-+----------+  |        +------------------------+       |   +-------+  |        +-----------------------+       |
-              |        |                        |       |              |        |                       |       |
-              +------- |  tick-data-publisher   | ------+              +------- |  tick-data-consumer   | ------+
-              |        +------------------------+       |              |        +-----------------------+       |
-              |        |                        |       |              |        |                       |       |   +---------------+
-              +------- |  computors-publisher   | ------+              +------- |  computors-consumer   | ------+-> | elasticsearch |
-                       +------------------------+                               +-----------------------+           +---------------+
+                 +------------------------+                    +-----------------------+
+  +------------- | transactions-publisher | ------+    +------ | transactions-consumer | ------+
+  v              +------------------------+       v    v       +-----------------------+       v
++----------+     |                        |     +--------+     |                       |     +---------------+
+| archiver | <-- |  tick-data-publisher   | --> |        | <-- |  tick-data-consumer   | --> | elasticsearch |
++----------+     +------------------------+     | kafka  |     +-----------------------+     +---------------+
+  ^              |                        |     |        |     |                       |       ^
+  +------------- |  computors-publisher   | --> |        | <-- |  computors-consumer   | ------+
+                 +------------------------+     +--------+     +-----------------------+
+```
+
+And one additional (events) in development:
+
+```
++------------------+
+|  events-service  |
++------------------+
+  ^
+  |
+  |
++------------------+     +-------+     +-----------------+
+| events-publisher | --> | kafka | <-- | events-consumer |
++------------------+     +-------+     +-----------------+
+                                         |
+                                         |
+                                         v
+                                       +-----------------+
+                                       |  elasticsearch  |
+                                       +-----------------+
+
 ```
 
 The code can be found in the following repositories: [go-data-publisher](https://github.com/qubic/go-data-publisher) and for events in [go-events-publisher](https://github.com/qubic/go-events-publisher) and in [go-events-consumer](https://github.com/qubic/go-events-consumer).
-
-
-Synchronous vs asynchronous approach. Delay in both cases.
-
-Kafka, publishers, consumers
-
-Data storage for recovery
-
-Transactions, tick data, computor lists, events
-
-Cluster. Diagram.
-
-
 
 ### Query and status services
 
@@ -203,30 +219,64 @@ To solve problems with asynchronicity and to provide metadata to the query servi
 
 #### Query Service
 
-The [query service](https://github.com/qubic/archive-query-service) replaced the most important old endpoints transparently (they return the same data but get them from elasticsearch) and created new endpoints. The new endpoints allow to specify filters and ranges and provide a more general interface for pagination. You can find the documentation for the new v2 endpoints [here](https://github.com/qubic/archive-query-service/blob/main/v2/README.md) and [here](https://qubic.github.io/integration/Partners/qubic-rpc-doc.html?urls.primaryName=Qubic%20Query%20V2%20Tree).
+The [query service](https://github.com/qubic/archive-query-service) replaced the most important old endpoints transparently (they return the same data but get them from elasticsearch) and created new endpoints. The new endpoints allow to specify filters and ranges and provide a more general interface for pagination. You can find the documentation for the new v2 endpoints [here](https://github.com/qubic/archive-query-service/blob/main/v2/README.md) and the openapi specs [here](https://qubic.github.io/integration/Partners/qubic-rpc-doc.html?urls.primaryName=Qubic%20Query%20V2%20Tree). The query service is hosted at the url https://api.qubic.org.
 
-The new endpoints for example allow to query
+The new endpoints for example allow to query all burning transactions from a certain source address that exceed a certain amount by filtering and specifying ranges:
+
+```
+curl -X 'POST' \
+  'https://api.qubic.org/getTransactionsForIdentity' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "identity": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFXIB",
+    "filters": {
+           "inputType": "0"
+    },
+    "ranges": {
+        "amount": {
+            "gte": "1000000"
+        },
+        "tickNumber": {
+            "gte": "25563000"
+        }
+    },
+    "pagination": {
+      "size": 1000
+    }
+}' | jq
+```
+
+This was not possible with the old query endpoints. The new endpoints allow 3rd party services like explorers, wallets to display data much easier than before.
 
 The older v1 endpoints are deprecated and the ones that could not get transparently migrated to the new query infrastructure will get removed soon. Information will follow in due time.
 
-
 ### Modifications to the archiver
 
-Export and import of single epochs.
-Pruning of old data.
-Keep compatibility (except one endpoint).
+The [go-archiver](https://github.com/qubic/go-archiver) is still in use but is going to be refactored step by step to focus more on collecting the data and short term archivation. This is ongoing work that should be finished this year. The new version is needed for completing the archiving of the per-epoch-data.
+
+The new version will have new features with regard to managing the data per epoch:
+
+* It will produce one data set per epoch for archivation.
+* It will enable importing a series of sequential epochs.
+* It will prune old data as configured (for example keep last 'x' epochs).
+
+As the archiver is important for 3rd party developers and they do not want to run the complete RPC 2.0 infrastructure, many features will stay so that it can be used stand-alone, like a basic query API. Certain query functionality need to be removed, for example the `/v2/identities/{identity}/transfers` endpoint because superfluous indices will be removed from the data format. The current query API will be replaced by new more consistent endpoints.
 
 ### Overall architecture
 
-Complete diagram
+In summary, the following diagram shows all the parts of the current architecture at the time of writing this article. See above for details of every part.
 
+![](elastic-architecture.png)
 
+## Summary
 
+Qubic is moving very quickly and is on the verge of becoming a mature project. In order to keep pace with the future, it was necessary to adapt the integration layer to the growing requirements, and with the new architecture, we believe we have succeeded in doing so.
 
+Although the changes are not visible to the typical end user, they have a major impact on users of the integration API and on the operation of the integration layer.
 
-# Notes (unused)
+The work does not end here, of course. A few more parts need to be completed and refined and then we can focus on new features.
 
+All of the code is open source and available at the [qubic github repository](https://github.com/qubic).
 
-
-Furthermore the specialized approach only allows to access the data in certain ways and other access requires modifications that can be work and storage intensive. Additionally the archiver does not provide features out of the box that clients are used to like pagination, flexible querying and sorting. Last but not least the stored data cannot grow indefinitely and currently the complete archive including the quorum votes exceeds 500GB and grows quickly with the increased use of the network.
 
