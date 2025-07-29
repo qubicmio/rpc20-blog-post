@@ -4,11 +4,9 @@ Since epoch 104 the Qubic integration layer has provided easy access to the Qubi
 
 This layer is used by third-party applications such as explorers, wallets and exchanges. The advantage of this layer is that archived data is easily accessible, meaning users do not need to understand the network internals in detail or implement node communication.
 
-However, the existing integration layer is reaching its limits, and it is necessary to consider the future of Qubic in order to manage the anticipated growth. This is why we began refactoring the integration layer at the start of this year.
+However, the existing integration layer is reaching its limits, so we need to consider the future, particularly in terms of managing Qubics anticipated growth. This is why we started refactoring the integration layer at the beginning of this year. The outcome of these efforts is the new archiving solution in the integration layer (aka RPC 2.0 in popular wording). It is designed to support this expected future growth.
 
-The new archiving solution in the integration layer (aka RPC 2.0 in popular wording)  is designed to support the future growth of Qubic and this article aims to provide insight into the technical details of the new solution, as well as serving as documentation for those interested in operating an archive.
-
-While it may be of limited interest to regular end users, it could offer interesting insight into daily work that happens behind the scenes.
+This article aims to provide insight into the technical details of the new solution, as well as serving as documentation for those interested in operating an archive. While it may be of limited interest to regular end users, we hope it offers interesting insight into daily work that happens behind the scenes for them, too.
 
 ## Integration APIs
 
@@ -30,7 +28,7 @@ To be sustainable long term certain challenges need to be solved. Some of the mo
 
 ### Load
 
-Not long ago in beginning 2025 the whole integration layer needed to serve up to 10000 requests per minute. Only six months later this number has doubled and we serve more than 20000 request per minute at peak times. This load is expected to grow as the Qubic project faces more and more adaption.
+Not long ago in beginning 2025 the whole integration layer needed to serve up to 10000 requests per minute. Only six months later this number has doubled and we serve more than 20000 requests per minute at peak times. This load is expected to grow as the Qubic project faces more and more adaption.
 
 To be able to scale as needed we decided to split the querying part into a separate application so that the archiver can focus on processing the data.
 
