@@ -1,0 +1,6 @@
+# Archiver data per epoch
+
+[ archiver ] -- data per epoch --> [ archive ]
+
+[ web server ] --> [ archive]
+[ clients ] --> [ web server ]

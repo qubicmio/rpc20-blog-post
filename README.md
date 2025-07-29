@@ -53,7 +53,88 @@ As already stated the solution to our challenges was in splitting the system int
 * Handle the asynchronous nature of the new solution.
 * Modify the archiver to focus on processing.
 
+### Data storage
+
+We have different kind of data that needs different ways of access and therefore we decided to use different ways of storing the data. There is
+
+* Data that needs to be searchable and is frequently accessed.
+* Data that is mainly stored for historical reasons and backup and not frequently accessed.
+* Data that is temporarily stored for processing and short term backup/recovery (see later).
+
+```
++------------------+  epoch data   +---------+
+|     Archiver     | ------------> | Archive |
++------------------+               +---------+
+  |
+  | searchable data
+  v
++------------------+
+|  Search engine   |
++------------------+
+```
+
+#### Searchable data
+
+One of the hardest decision was to find a suitable database for the data that needs to be served frequently and with high performance, like transactions, tick data and events. We did experiment with several solutions from relational databases to online cloud solutions but they were not able to handle the expected amount of data well. Finally we decided to go with a search engine and used [Elasticsearch](https://www.elastic.co/elasticsearch) that is based on [Apache Lucene](https://lucene.apache.org/) but offers useful features for clustering and replication.
+
+The most important searchable data is transaction and tick data. Events are also available but not in production yet. For each kind of searchable data there is one search index within elasticsearch.
+
+From a technical perspective a search `index` is defined by a search `template`. The template describes the index and if data is added it will be handled according to the template. To be able to later change the index we use `aliases` for every index. That way we can manage the data without the need to change the clients, for example, if we need to reindex the data with a new template version into another index later. So every index looks like this in general:
+
+```
++-----------+     +-----------+     +--------------+
+| xyz-alias | --> | xyz-index | <-- | xyz-template |
++-----------+     +-----------+     +--------------+
+```
+
+From the client persepective the data store looks like this:
+
+```
+  +--------------------+       +--------------+
+  |       client       |   --> | elasticsarch |
+  +--------------------+       +--------------+
+..........................
+: elasticsearch          :
+:                        :
+: +--------------------+ :
+: |  computors-alias   | :
+: +--------------------+ :
+: +--------------------+ :
+: |    events-alias    | :
+: +--------------------+ :
+: +--------------------+ :
+: |  tick-data-alias   | :
+: +--------------------+ :
+: +--------------------+ :
+: | transactions-alias | :
+: +--------------------+ :
+:                        :
+:........................:
+```
+
+#### Archived data
+
+For the data archive we decided to go with a file store where every epoch is stored as a data package. To make this possible we had to change the archiver to be able to split data per epoch and allow it to prune old data to keep the overall data size manageable. The per epoch data get's shipped to a server where it is archived. Third parties can get the data from there and import it. The archive is also useful as a backup.
+
+```
++----------+  data per epoch   +------------+
+| archiver | ----------------> |  archive   |
++----------+                   +------------+
+                                 ^
+                                 |
+                                 |
++----------+                   +------------+
+| clients  | ----------------> | web server |
++----------+                   +------------+
+```
+
+#### Backup and disaster recovery
+
+To be able to restore the data in case of disaster there are several layers in place. First of all there are regular backups of the systems so that we can restore them in case something goes wrong. But it's also possible to restore from scratch. We have intermediary short term storage for restoring without the need of processing the source data (for fast recovery of the last few epochs) and the archived data that can be reimported and reprocessed.
+
 ### Ingestion pipelines
+
+To transport the data from the source that collects the data (archiver) to the destination (elasticsearch) we decided to use [Apache Kafka](https://kafka.apache.org/).
 
 Synchronous vs asynchronous approach. Delay in both cases.
 
@@ -65,14 +146,7 @@ Transactions, tick data, computor lists, events
 
 Cluster. Diagram.
 
-### Databases
 
-* Elasticsearch
-* Per epoch storage. 
-* Temporary storage in message broker.
-* Backup and disaster recovery.
-
-Diagram - indices
 
 ### Query and status services
 

@@ -1,0 +1,5 @@
+# Search indices
+
+[ xyz-alias] --> [ xyz-index ]
+[ xyz-template ] --> [ xyz-index ]
+

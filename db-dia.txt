@@ -1,0 +1,8 @@
+# Needs libgraph-easy-perl
+# generate with cut <file> | graph-easy
+
+# Database structure
+
+ [ Archiver ] -- epoch data --> [ Archive ]
+ [ Archiver ] -- searchable data --> [ Search engine ]
+

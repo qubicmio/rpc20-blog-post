@@ -1,0 +1,10 @@
+# Elasticsearch
+
+[ client ] --> [ elasticsarch]
+
+(
+ elasticsearch [transactions-alias], [tick-data-alias], [computors-alias], [events-alias]
+){ 
+  border-style: dotted;
+}
+
