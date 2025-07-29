@@ -75,7 +75,7 @@ We have different kind of data that needs different ways of access and therefore
 
 #### Searchable data
 
-One of the hardest decision was to find a suitable database for the data that needs to be served frequently and with high performance, like transactions, tick data and events. We did experiment with several solutions from relational databases to online cloud solutions but they were not able to handle the expected amount of data well. Finally we decided to go with a search engine and used [Elasticsearch](https://www.elastic.co/elasticsearch) that is based on [Apache Lucene](https://lucene.apache.org/) but offers useful features for clustering and replication.
+One of the hardest decision was to find a suitable database for the data that needs to be served frequently and with high performance, like transactions, tick data and events. We did experiment with several solutions from relational databases to online cloud solutions but they were not able to handle the expected amount of data well. Finally we decided to go with a search engine and used [Elasticsearch](https://www.elastic.co/elasticsearch) that is based on [Apache Lucene](https://lucene.apache.org/) but offers useful features for clustering and replication. One elasticsearch cluster consists out of at least three nodes to provide enough redundancy (for example for maintenance).
 
 The most important searchable data is transaction and tick data. Events are also available but not in production yet. For each kind of searchable data there is one search index within elasticsearch.
 
@@ -134,7 +134,40 @@ To be able to restore the data in case of disaster there are several layers in p
 
 ### Ingestion pipelines
 
-To transport the data from the source that collects the data (archiver) to the destination (elasticsearch) we decided to use [Apache Kafka](https://kafka.apache.org/).
+Ingestion pipelines are used to transport the data from the source that collects it (archiver) to the destination (elasticsearch). The data publishing part needs to be decoupled from the source to avoid problems at the source when the backend is not available. Theoretically it would be possible to send the data directly from the publisher to elasticsearch but we decided to use a message broker in between to have redundancy, temporary persistence, and the possibility to use data integration features or to scale up the processing with multiple partitions.
+
+As a message broker we decided to use [Apache Kafka](https://kafka.apache.org/), an open-source distributed event streaming platform. One kafka cluster consists out of at least three nodes to provide proper redundancy.
+
+A typical pipeline shipping data from the archiver to elasticsearch looks like this:
+
+```
++--------+     +-----------+     +-------+     +----------+     +-------------+
+| source | <-- | publisher | --> | topic | <-- | consumer | --> | destination |
++--------+     +-----------+     +-------+     +----------+     +-------------+
+```
+
+The publisher (aka producer) collectes the data from the source and sends messages to a kafka topic. A kafka topic is a queue of messages. A consumer reads the messages from kafka and sends the data to the destination.
+
+Kafka allows multiple consumer groups to read from one topic and guarantees that each groups consumes each message (ordered within one partition). That allows to consume one message in multiple ways.
+
+We store around 5 epochs of data temporarily within kafka. In case of problems we are able to replay parts of the data quickly. For redundancy we use a replication factor of `3`, that means that 2 nodes per cluster can go offline without affecting the data processing.
+
+At the moment we have 3 ingestion pipelines running in production and one additional (events) in development.
+
+```
++----------+           +------------------------+           +-------+           +-----------------------+
+| archiver | <+------- | transactions-publisher | ------+-> | kafka | <+------- | transactions-consumer | ------+
++----------+  |        +------------------------+       |   +-------+  |        +-----------------------+       |
+              |        |                        |       |              |        |                       |       |
+              +------- |  tick-data-publisher   | ------+              +------- |  tick-data-consumer   | ------+
+              |        +------------------------+       |              |        +-----------------------+       |
+              |        |                        |       |              |        |                       |       |   +---------------+
+              +------- |  computors-publisher   | ------+              +------- |  computors-consumer   | ------+-> | elasticsearch |
+                       +------------------------+                               +-----------------------+           +---------------+
+```
+
+The code can be found in the following repositories: [go-data-publisher](https://github.com/qubic/go-data-publisher) and for events in [go-events-publisher](https://github.com/qubic/go-events-publisher) and in [go-events-consumer](https://github.com/qubic/go-events-consumer).
+
 
 Synchronous vs asynchronous approach. Delay in both cases.
 
@@ -150,8 +183,32 @@ Cluster. Diagram.
 
 ### Query and status services
 
-Query interface. Filters, ranges, pagination.
-Handling ingestion delay.
+Because of the decoupling the data publishing part is asynchronous per-se. While this has some advantages it also makes the system more complex on the query side because the archive and the data collection part are not in sync but the archive is slightly delayed.
+
+#### Status Service
+
+To solve problems with asynchronicity and to provide metadata to the query service we decided to create a small service ([status service](https://github.com/qubic/go-data-publisher/tree/main/status-service)) that checks what data is already completely available in the data store. As a nice side effect that service also verifies the ingested data. The status service is a mediator between the query service, the archiver and the searchable data. It makes sure that only completely ingested data is served and also provides some metadata from the archiver that is available in elasticsearch.
+
+```
++---------------+     +----------------+     +----------+
+| query service | --> | status service | --> | archiver |
++---------------+     +----------------+     +----------+
+  |                     |
+  |                     |
+  v                     |
++---------------+       |
+| elasticsearch | <-----+
++---------------+
+```
+
+#### Query Service
+
+The [query service](https://github.com/qubic/archive-query-service) replaced the most important old endpoints transparently (they return the same data but get them from elasticsearch) and created new endpoints. The new endpoints allow to specify filters and ranges and provide a more general interface for pagination. You can find the documentation for the new v2 endpoints [here](https://github.com/qubic/archive-query-service/blob/main/v2/README.md) and [here](https://qubic.github.io/integration/Partners/qubic-rpc-doc.html?urls.primaryName=Qubic%20Query%20V2%20Tree).
+
+The new endpoints for example allow to query
+
+The older v1 endpoints are deprecated and the ones that could not get transparently migrated to the new query infrastructure will get removed soon. Information will follow in due time.
+
 
 ### Modifications to the archiver
 

@@ -1,0 +1,5 @@
+[query service] --> [elasticsearch]
+[query service] --> [status service]
+[status service] --> [archiver]
+[status service] --> [elasticsearch]
+

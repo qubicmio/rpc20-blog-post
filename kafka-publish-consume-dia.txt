@@ -1,0 +1,6 @@
+
+[publisher] { origin: source; offset: 2,0; } --> [source] 
+[publisher] --> [topic] { origin: publisher; offset: 2,0; }
+[consumer] { origin: topic; offset: 2,0; } --> [topic] 
+[consumer]  --> [destination] { origin: consumer; offset: 2,0; }
+

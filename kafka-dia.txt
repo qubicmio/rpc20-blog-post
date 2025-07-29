@@ -1,0 +1,20 @@
+
+[transactions-publisher] { origin: archiver; offset: 3,0; } --> { end: front,0; } [archiver] 
+[tick-data-publisher] { origin: archiver; offset: 3,1; } --> { end: front,0; } [archiver] 
+[computors-publisher] { origin: archiver; offset: 3,2; } --> { end: front,0; } [archiver] 
+
+[transactions-publisher] --> { end: back,0; } [kafka] { origin: transactions-publisher; offset: 3,0; }
+[tick-data-publisher] --> { end: back,0; } [kafka] { origin: transactions-publisher; offset: 3,0; }
+[computors-publisher] --> { end: back,0; } [kafka] { origin: transactions-publisher; offset: 3,0; }
+
+[transactions-consumer] { origin: kafka; offset: 3,0; } --> { end: front,0; } [kafka] 
+[tick-data-consumer] { origin: kafka; offset: 3,1; } --> { end: front,0; } [kafka] 
+[computors-consumer] { origin: kafka; offset: 3,2; } --> { end: front,0; } [kafka] 
+
+[transactions-consumer] --> { end: back,0; } [elasticsearch]
+[tick-data-consumer]  --> { end: back,0; } [elasticsearch]
+[computors-consumer]  --> { end: back,0; } [elasticsearch]
+
+
+
+
