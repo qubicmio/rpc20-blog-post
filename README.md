@@ -1,24 +1,24 @@
-# The way to RPC 2.0 - Integration Layer Revamp
+# Integration Layer Revamp
 
-Since epoch 104 the Qubic integration layer has provided easy access to the Qubic network. It enables transactions to be sent, smart contracts to be queried, and information such as transaction and tick data to be provided.
+Since epoch 104 the Qubic integration layer has provided easy access to the Qubic network. It enables transactions to be sent, smart contracts to be queried, and information like transaction and tick data to be provided.
 
-This layer is used by third-party applications such as explorers, wallets and exchanges. The advantage of this layer is that archived data is easily accessible, meaning users do not need to understand the network internals in detail or implement node communication.
+This layer is used by third-party applications such as explorers, wallets and exchanges. The advantage of this layer is that network data is easily accessible, meaning users do not need to understand the network internals in detail or implement node communication.
 
-However, the existing integration layer is reaching its limits, so we need to consider the future, particularly in terms of managing Qubics anticipated growth. This is why we started refactoring the integration layer at the beginning of this year. The outcome of these efforts is the new archiving solution in the integration layer (aka RPC 2.0 in popular wording). It is designed to support this expected future growth.
+However, the existing integration layer is reaching its limits, so we need to consider the future, particularly in terms of managing Qubics anticipated growth. This is why we started refactoring the integration layer at the beginning of this year. The outcome of these efforts is the new archiving solution in the integration layer (including a new API aka RPC 2.0). It is designed to support this expected future growth.
 
-This article aims to provide insight into the technical details of the new solution, as well as serving as documentation for those interested in operating an archive. While it may be of limited interest to regular end users, we hope it offers interesting insight into daily work that happens behind the scenes for them, too.
+This article aims to provide insight into the technical details of the new solution, as well as serving as documentation for those interested in operating an archive. While the details may be of limited interest to regular end users, we hope it offers useful insight into daily work that happens behind the scenes for them, too.
 
 ## Integration APIs
 
 The integration layer provides several different APIs. The most important ones are the live API and the archive API.
 
-The live API talks to the Qubic nodes directly and provides most current data. It fetches information like qu balances and asset information and allows to send transactions and query smart contracts. The nodes provide a current view onto the data for the current epoch.
+The live API talks to the Qubic nodes directly and provides most current data. It fetches information like balances and asset information and allows to send transactions and query smart contracts. The nodes provide a current view onto the data for the current epoch. The live API will remain as is and is not affected by the changes.
 
-The data from the archive API instead provides archived data. The data gets collected from the nodes and finally stored in a database. Until recently all this was done by the qubic-archiver. 
+The data from the archive API instead provides archived data. The data gets collected from the nodes and finally stored in a database. This API will get replaced with the new archive's API.
 
 ## Original solution
 
-The original archive implementation ([qubic-archiver](https://github.com/qubic/go-archiver)) is a fast, monolithic, and specialized solution. It processes the data for every tick, validates it by using quorum data, stores it in an embedded database (pebble), and serves it via GRPC and rest-like endpoints. Redundancy is achieved by running several instances in different data centers in parallel. While this solution still works perfectly fine it is not future proof enough to handle the expected growth long term.
+The original archive implementation ([qubic-archiver](https://github.com/qubic/go-archiver)) is a fast, monolithic, and specialized solution. It processes the data for every tick, validates it by using quorum data, stores it in an embedded database (pebble), and serves it via grpc and rest-like endpoints. Redundancy is achieved by running several instances in different data centers in parallel. While this solution still works perfectly fine it is not future proof enough to handle the expected growth long term.
 
 To be sustainable long term certain challenges need to be solved. Some of the most important requirements are
 
@@ -83,7 +83,7 @@ One of the hardest decision was to find a suitable database for the data that ne
 
 The most important searchable data is transaction and tick data. Events are also available but not in production yet. For each kind of searchable data there is one search index within elasticsearch.
 
-From a technical perspective a search `index` is defined by a search `template`. The template describes the index and if data is added it will be handled according to the template. To be able to later change the index we use `aliases` for every index. That way we can manage the data without the need to change the clients, for example, if we need to reindex the data with a new template version into another index later. So every index looks like this in general:
+From a technical perspective a search `index` is defined by a search `template`. The template describes the index and if data is added it will be handled according to the template. To be able to later change the index we use `aliases` for every index. That way we can manage the data without the need to change the clients, for example, if we need to re-index the data with a new template version into another index later. So every index looks like this in general:
 
 ```
 +-----------+     +-----------+     +--------------+
@@ -116,9 +116,11 @@ From the client persepective the data store looks like this:
 :........................:
 ```
 
+By splitting the data and only storing the searchable data the necessary size for this part of the archive has been drastically reduced. For example we store (approximately) 160 millions transactions with a dataset size of 90 GB and 16 millions ticks with a dataset size of 30 GB. This includes the index but not the replicated data (multiply by replication factor). Compared to the 600-800 GB for the full archive this is easy to manage.
+
 #### Archived data
 
-For the data archive we decided to go with a file store where every epoch is stored as a data package. To make this possible we had to change the archiver to be able to split data per epoch and allow it to prune old data to keep the overall data size manageable. The per epoch data get's shipped to a server where it is archived. Third parties can get the data from there and import it. The archive is also useful as a backup.
+For the data archive we decided to go with a file store where every epoch is stored as a data package. To make this possible we had to change the archiver to be able to split data per epoch and allow it to prune old data to keep the overall data size manageable. The per epoch data gets shipped to a server where it is archived. Third parties can get the data from there and import it. The archive is also useful as a backup.
 
 ```
 +----------+  data per epoch   +------------+
@@ -201,7 +203,7 @@ Because of the decoupling the data publishing part is asynchronous per-se. While
 
 #### Status Service
 
-To solve problems with asynchronicity and to provide metadata to the query service we decided to create a small service ([status service](https://github.com/qubic/go-data-publisher/tree/main/status-service)) that checks what data is already completely available in the data store. As a nice side effect that service also verifies the ingested data. The status service is a mediator between the query service, the archiver and the searchable data. It makes sure that only completely ingested data is served and also provides some metadata from the archiver that is available in elasticsearch.
+To solve problems with asynchronous ingestion and to provide metadata to the query service we decided to create a small service ([status service](https://github.com/qubic/go-data-publisher/tree/main/status-service)) that checks what data is already completely available in the data store. As a nice side effect that service also verifies the ingested data. The status service is a mediator between the query service, the archiver and the searchable data. It makes sure that only completely ingested data is served and also provides some metadata from the archiver that is available in elasticsearch.
 
 ```
 +---------------+     +----------------+     +----------+
@@ -217,9 +219,9 @@ To solve problems with asynchronicity and to provide metadata to the query servi
 
 #### Query Service
 
-The [query service](https://github.com/qubic/archive-query-service) replaced the most important old endpoints transparently (they return the same data but get them from elasticsearch) and created new endpoints. The new endpoints allow to specify filters and ranges and provide a more general interface for pagination. You can find the documentation for the new v2 endpoints [here](https://github.com/qubic/archive-query-service/blob/main/v2/README.md) and the openapi specs [here](https://qubic.github.io/integration/Partners/qubic-rpc-doc.html?urls.primaryName=Qubic%20Query%20V2%20Tree). The query service is hosted at the url https://api.qubic.org.
+The [query service](https://github.com/qubic/archive-query-service) replaced the most important old endpoints transparently (they return the same data but get them from elasticsearch) and created new endpoints. The new endpoints allow to specify filters and ranges and provide a more general interface for pagination. You can find the documentation for the new v2 endpoints [here](https://github.com/qubic/archive-query-service/blob/main/v2/README.md) and the openapi specs [here](https://qubic.github.io/integration/Partners/qubic-rpc-doc.html?urls.primaryName=Qubic%20Query%20V2%20Tree). Because of performance reasons we restrict the maximum number of search results to 10000 and one page cannot exceed 1024 results. The query service is hosted at https://api.qubic.org.
 
-The new endpoints for example allow to query all burning transactions from a certain source address that exceed a certain amount by filtering and specifying ranges:
+To spare you to read the whole documentation we show the flexibility of the new API with one example. It is possible to query all burn transactions that exceed one million qubic starting with tick number 25563000 by specifying filters and ranges:
 
 ```
 curl -X 'POST' \
@@ -233,7 +235,7 @@ curl -X 'POST' \
     },
     "ranges": {
         "amount": {
-            "gte": "1000000"
+            "gt": "1000000"
         },
         "tickNumber": {
             "gte": "25563000"
@@ -245,21 +247,21 @@ curl -X 'POST' \
 }' | jq
 ```
 
-This was not possible with the old query endpoints. The new endpoints allow 3rd party services like explorers, wallets to display data much easier than before.
+Queries like these were not possible with the old query endpoints. The new endpoints allow 3rd party services to retrieve data much easier than before.
 
-The older v1 endpoints are deprecated and the ones that could not get transparently migrated to the new query infrastructure will get removed soon. Information will follow in due time.
+The new endpoints will replace the old deprecated endpoints and the old ones will get removed soon. Information will follow in due time.
 
 ### Modifications to the archiver
 
-The [go-archiver](https://github.com/qubic/go-archiver) is still in use but is going to be refactored step by step to focus more on collecting the data and short term archivation. This is ongoing work that should be finished this year. The new version is needed for completing the archiving of the per-epoch-data.
+The [go-archiver](https://github.com/qubic/go-archiver) is still in use but is going to be refactored step by step to focus more on collecting the data and short term archiving. This is ongoing work that should be finished this year. The new version is needed for completing the archiving of the per-epoch-data.
 
 The new version will have new features with regard to managing the data per epoch:
 
-* It will produce one data set per epoch for archivation.
-* It will enable importing a series of sequential epochs.
+* It will produce one data set per epoch for archiving.
+* It will enable re-importing a series of sequential epochs.
 * It will prune old data as configured (for example keep last 'x' epochs).
 
-As the archiver is important for 3rd party developers and they do not want to run the complete RPC 2.0 infrastructure, many features will stay so that it can be used stand-alone, like a basic query API. Certain query functionality need to be removed, for example the `/v2/identities/{identity}/transfers` endpoint because superfluous indices will be removed from the data format. The current query API will be replaced by new more consistent endpoints.
+As the archiver is important for 3rd party developers and they do not want to run the complete RPC 2.0 infrastructure, many features will stay so that it can be used stand-alone, like a basic query API. Certain query functionality needs to be removed though because of data format changes. The current query API will be replaced by a new one.
 
 ### Overall architecture
 
@@ -269,11 +271,19 @@ In summary, the following diagram shows all the parts of the current architectur
 
 ## Summary
 
-Qubic is moving very quickly and is on the verge of becoming a mature project. In order to keep pace with the future, it was necessary to adapt the integration layer to the growing requirements, and with the new architecture, we believe we have succeeded in doing so.
+Qubic is moving very quickly and is on the verge of becoming a mature project. In order to keep pace with the project growth, it was necessary to adapt the integration layer. Let's recall the challenges that we wanted to solve:
+
+*Load: we can confidentially serve the grown load and are able to scale up with additional query services and/or in the search layer. Currently the majority of the requests takes around 100ms from receiving the request until responding, if the service is in the same data center than the search layer (we don't have elastic search clusters in all data centers yet).
+
+*Data*: as the data is split it's easier to manage now and the searchable data is only a fraction of the total data. We are confident to be able to support many more epochs until we need to scale up the search layer.
+
+*Features*: By using elasticsearch we have a full fledged search engine at hand that provides all the features an API user can dream of. While we cannot expose all these features because of performance and security reasons, the new API is much more flexible and extensible than the old one and supports many new use cases.
+
+We are of the opinion, that all the challenges we faced in the beginning of this year are solved with the new architecture and we are ready for the future.
 
 Although the changes are not visible to the typical end user, they have a major impact on users of the integration API and on the operation of the integration layer.
 
-The work does not end here, of course. A few more parts need to be completed and refined and then we can focus on new features.
+The work does not end here, of course. A few more parts need to be completed and refined and then we can and need to focus on new features.
 
 All of the code is open source and available at the [qubic github repository](https://github.com/qubic).
 
