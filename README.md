@@ -1,10 +1,10 @@
 # Integration Layer Revamp
 
-Since epoch 104 the Qubic integration layer has provided easy access to the Qubic network. It enables transactions to be sent, smart contracts to be queried, and information like transaction and tick data to be provided.
+For a while now, Qubic has had an "integration layer" that makes it easy for outside apps like crypto wallets, exchanges, and block explorers to connect to its network. This layer lets these apps do important things like send transactions, check smart contracts, and get information about what's happening on the Qubic network. It's really helpful because developers don't have to learn all the complicated inner workings of Qubic or figure out how to talk directly to its "nodes" (the computers running the network).
 
-This layer is used by third-party applications such as explorers, wallets and exchanges. The advantage of this layer is that network data is easily accessible, meaning users do not need to understand the network internals in detail or implement node communication.
+However, Qubic is growing fast, and this old integration layer was starting to hit its limits. To keep up with future growth, Qubic began rebuilding this layer at the start of the year. The result is a big upgrade, including a new way to store historical data and upgraded APIs. This new system is built to handle Qubic's expected growth. It officially launched on July 1st, 2025.
 
-However, the existing integration layer is reaching its limits, so we need to consider the future, particularly in terms of managing Qubics anticipated growth. This is why we started refactoring the integration layer at the beginning of this year. The outcome of these efforts is the new archiving solution in the integration layer (including a new API aka RPC 2.0). It is designed to support this expected future growth. The new integration layer went officially into production on 1st of July.
+While some of the technical details might not be super interesting to the average Qubic user, this new setup is a big deal behind the scenes. It helps make sure everything runs smoothly as Qubic continues to expand.
 
 This article aims to provide insight into the technical details of the new solution, as well as serving as documentation for those interested in operating an archive. While the details may be of limited interest to regular end users, we hope it offers useful insight into daily work that happens behind the scenes for them, too.
 
@@ -278,7 +278,7 @@ In summary, the following diagram gives and overview over the complete architect
 
 ![](elastic-architecture.png)
 
-The first parts of the new solution went into production in the beginning of Q2 2025 and it transparently replaced most of the old archiver endpoints. The full solution was available end of Q2 and went officially live on 1st of July 2025. Some follow up work like the archiver refactoring for the per epoch archive, is planned to follow until end of this year. 
+The first parts of the new solution went into production in the April 2025 and in the following months it transparently replaced most of the old archiver endpoints. The full solution was available end of June 2025 and went officially live on July 1st, 2025. Some follow up work like the archiver refactoring for the per epoch archive, is planned to follow until end of this year.
 
 ## Summary
 
