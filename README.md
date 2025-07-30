@@ -6,8 +6,6 @@ However, Qubic is growing fast, and this old integration layer was starting to h
 
 While some of the technical details might not be super interesting to the average Qubic user, this new setup is a big deal behind the scenes. It helps make sure everything runs smoothly as Qubic continues to expand.
 
-This article aims to provide insight into the technical details of the new solution, as well as serving as documentation for those interested in operating an archive. While the details may be of limited interest to regular end users, we hope it offers useful insight into daily work that happens behind the scenes for them, too.
-
 ## Integration APIs
 
 The integration layer provides several different APIs. The most important ones are the live API and the archive API.
